@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="会话管理：带删除风险标记的会话列表、可撤销的回收站，以及会自检的附件清理">
+  <defs>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#10151c"/>
+      <stop offset="1" stop-color="#1b2430"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="360" fill="url(#ink)"/>
+  <g stroke="#2b3a4d" stroke-width="1">
+    <path d="M0 90h1280M0 270h1280"/>
+    <path d="M60 0v360M1220 0v360"/>
+  </g>
+  <text x="60" y="118" fill="#e8edf3" font-family="ui-sans-serif, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Helvetica, Arial, sans-serif" font-size="46" font-weight="600">会话管理 · 毕业办</text>
+  <text x="60" y="162" fill="#9fb0c3" font-family="ui-sans-serif, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Helvetica, Arial, sans-serif" font-size="21">历史会话有序出清：30 天回收站、逐条删除风险、附件清理自检。</text>
+  <text x="60" y="192" fill="#9fb0c3" font-family="ui-sans-serif, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Helvetica, Arial, sans-serif" font-size="21">每一次移除都有回执，每一次彻底删除都要挡住血缘。</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14">
+    <rect x="60" y="228" width="150" height="30" rx="15" fill="none" stroke="#2f9e5f"/>
+    <text x="80" y="248" fill="#7fd6a4">建议删除</text>
+    <rect x="222" y="228" width="150" height="30" rx="15" fill="none" stroke="#c9861b"/>
+    <text x="242" y="248" fill="#e3b465">谨慎</text>
+    <rect x="384" y="228" width="150" height="30" rx="15" fill="none" stroke="#cf5348"/>
+    <text x="404" y="248" fill="#f0978f">警告</text>
+  </g>
+  <g transform="translate(700 44)">
+    <rect x="0" y="0" width="520" height="250" rx="16" fill="#0c1117" stroke="#2b3a4d" stroke-width="1.5"/>
+    <path d="M0 44h520" stroke="#2b3a4d" stroke-width="1.5"/>
+    <circle cx="26" cy="22" r="5" fill="#cf5348"/><circle cx="44" cy="22" r="5" fill="#c9861b"/><circle cx="62" cy="22" r="5" fill="#2f9e5f"/>
+    <g fill="none" stroke="#5b6b7c" stroke-width="2" stroke-linecap="round">
+      <rect x="24" y="66" width="26" height="26" rx="6"/><path d="M30 79l5 5 10-11"/>
+      <rect x="70" y="72" width="210" height="14" rx="7"/>
+      <circle cx="466" cy="79" r="8" fill="#2f9e5f" stroke="#2f9e5f"/>
+      <rect x="24" y="112" width="26" height="26" rx="6"/>
+      <rect x="70" y="118" width="168" height="14" rx="7"/>
+      <circle cx="466" cy="125" r="8" fill="#c9861b" stroke="#c9861b"/>
+      <rect x="24" y="158" width="26" height="26" rx="6" fill="#5b6b7c" fill-opacity="0.16"/>
+      <path d="M30 171l5 5 10-11"/>
+      <rect x="70" y="164" width="246" height="14" rx="7"/>
+      <circle cx="466" cy="171" r="8" fill="#cf5348" stroke="#cf5348"/>
+      <rect x="24" y="204" width="26" height="26" rx="6"/>
+      <rect x="70" y="210" width="132" height="14" rx="7"/>
+      <circle cx="466" cy="217" r="8" fill="#2f9e5f" stroke="#2f9e5f"/>
+    </g>
+  </g>
+</svg>
