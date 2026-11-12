@@ -48,8 +48,13 @@ git clone https://github.com/yinmyu/dsh-session-manager.git
 Then in DSH open **Plugins → Add plugin** and point it at the cloned directory. In a scripted
 environment the equivalent is `plugin_manager` `install_bundle` with that absolute path.
 
-**As a package** — once published, `pnpm add @yinmyu/dsh-session-manager` inside your DSH profile does
-the same thing.
+**Straight from GitHub** — inside your DSH profile:
+
+```bash
+pnpm add github:yinmyu/dsh-session-manager
+```
+
+**From npm** — once published, `pnpm add @yinmyu/dsh-session-manager` does the same thing.
 
 After installing, reload the page (the client half is a browser module) and open **Session manager** in
 the left sidebar. The host half reloads only when the application restarts.

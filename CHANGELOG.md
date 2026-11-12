@@ -9,6 +9,7 @@
 - **打包清单**：`files` 覆盖运行时文件、补丁、locale、`docs`、`policy`、图标与文档；用 `pnpm pack` 核验了实际产物（18 个文件，无多余条目）。
 - **README**：改写为发布用说明——能力表、安全模型、两种安装方式（GitHub 克隆 + Plugins → Add plugin、或 `pnpm add`）、配置项、开发与测试、风险策略的校准接口、目录结构与许可证，并保留中文说明。
 - **测试**：客户端模块 id 断言改为从 `package.json` 读取（包名与模块 id 必须一致，否则 Loader 会指向错误的行）。
+- **发布**：公开仓库 `https://github.com/yinmyu/dsh-session-manager`（MIT），README 补充了从 GitHub 直接安装的方式。
 
 ## 0.6.1 — 2026-11-12
 
