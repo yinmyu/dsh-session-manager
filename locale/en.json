@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Session manager",
+    "description": "Adds a Session manager entry to the left sidebar that lists every session with its durable size and a deletion-risk verdict, and lets you select many at once to archive them, move them to a 30-day recycle bin (restorable, with one-click undo), or delete them. The recycle bin view restores or permanently deletes entries and reports what each one still means to other sessions. A cleanup action reclaims images and files that no session references any more, and verifies itself afterwards. Everything destructive is audited to <DSH_HOME>/logs/session-manager.jsonl. Turning the plugin off removes both sidebar entries and its one HTTP route; no session data is touched.",
+    "detail": "docs/DETAIL.md"
+  }
+}

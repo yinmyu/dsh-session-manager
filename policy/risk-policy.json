@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": 1,
+  "note": "Deletion-risk policy. Data, not code: the evaluator implements the operators, this file owns the judgement. Change thresholds here; the panel and the audit trail record which version produced a decision.",
+  "tiers": { "high": 3, "medium": 2, "low": 1 },
+  "rules": [
+    {
+      "id": "pinned",
+      "tier": "high",
+      "reason": "risk.reason.pinned",
+      "priority": 100,
+      "when": { "fact": "pinned", "op": "isTrue" }
+    },
+    {
+      "id": "running",
+      "tier": "high",
+      "reason": "risk.reason.running",
+      "priority": 100,
+      "when": { "fact": "running", "op": "isTrue" }
+    },
+    {
+      "id": "derived",
+      "tier": "high",
+      "reason": "risk.reason.children",
+      "priority": 100,
+      "when": { "fact": "childCount", "op": "gte", "value": 1 }
+    },
+    {
+      "id": "blank",
+      "tier": "low",
+      "reason": "risk.reason.blank",
+      "priority": 90,
+      "when": { "fact": "blank", "op": "isTrue" }
+    },
+    {
+      "id": "subagent",
+      "tier": "low",
+      "reason": "risk.reason.subagent",
+      "priority": 90,
+      "when": { "fact": "origin", "op": "eq", "value": "subagent" }
+    },
+    {
+      "id": "archived-idle",
+      "tier": "low",
+      "reason": "risk.reason.archivedIdle",
+      "priority": 85,
+      "when": {
+        "and": [
+          { "fact": "archived", "op": "isTrue" },
+          { "fact": "ageMs", "op": "gte", "value": 2592000000 }
+        ]
+      }
+    },
+    {
+      "id": "active-today",
+      "tier": "high",
+      "reason": "risk.reason.recent24h",
+      "priority": 80,
+      "when": { "fact": "ageMs", "op": "lt", "value": 86400000 }
+    },
+    {
+      "id": "active-week",
+      "tier": "medium",
+      "reason": "risk.reason.recent7d",
+      "priority": 70,
+      "when": { "fact": "ageMs", "op": "lt", "value": 604800000 }
+    },
+    {
+      "id": "large-log",
+      "tier": "medium",
+      "reason": "risk.reason.large",
+      "priority": 60,
+      "when": { "fact": "logBytes", "op": "gte", "value": 20971520 }
+    },
+    {
+      "id": "stale",
+      "tier": "low",
+      "reason": "risk.reason.stale",
+      "priority": 50,
+      "when": { "fact": "ageMs", "op": "gte", "value": 604800000 }
+    }
+  ],
+  "fallback": { "tier": "medium", "reason": "risk.reason.other" },
+  "guards": {
+    "unknownFactTier": "medium",
+    "note": "A rule whose operand is unknown never matches, and a verdict reached only from age/size rules while some operand was unknown is downgraded to this tier: missing data must never silently recommend deletion."
+  }
+}

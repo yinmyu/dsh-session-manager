@@ -1,0 +1,1 @@
+![The session list with a risk verdict on every row, the recycle bin, and the undo step](preview.svg)

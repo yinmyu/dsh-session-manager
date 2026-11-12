@@ -1,0 +1,64 @@
+{
+  "name": "@yinmyu/dsh-session-manager",
+  "version": "0.7.0",
+  "description": "Batch-manage DeepSeek Harness sessions from a left-sidebar panel: multi-select, archive, a 30-day recycle bin with undo, tiered deletion risk, and a self-verifying cleanup for unused attachments.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node tools/host-smoke.mjs && node tools/client-smoke.mjs"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./policy/*.json": "./policy/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "policy",
+    "locale",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "DESIGN.md",
+    "tools/*.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "dsh-plugin",
+    "sessions",
+    "recycle-bin",
+    "attachments",
+    "cleanup"
+  ],
+  "author": "yinmyu <yinmyu@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yinmyu/dsh-session-manager.git"
+  },
+  "homepage": "https://github.com/yinmyu/dsh-session-manager#readme",
+  "bugs": {
+    "url": "https://github.com/yinmyu/dsh-session-manager/issues"
+  }
+}

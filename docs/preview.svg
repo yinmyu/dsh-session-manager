@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" role="img" aria-label="Session manager: a session list with per-row deletion-risk marks, a recycle bin, and an undo step">
+  <g fill="none" stroke="#5b6b7c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="32" y="32" width="352" height="236" rx="14"/>
+    <path d="M32 76h352"/>
+    <rect x="52" y="92" width="16" height="16" rx="4"/>
+    <path d="M56 100l4 4 8-9"/>
+    <rect x="84" y="94" width="196" height="12" rx="6"/>
+    <circle cx="344" cy="100" r="7" fill="#2f9e5f" stroke="#2f9e5f"/>
+    <rect x="52" y="132" width="16" height="16" rx="4"/>
+    <rect x="84" y="134" width="150" height="12" rx="6"/>
+    <circle cx="344" cy="140" r="7" fill="#c9861b" stroke="#c9861b"/>
+    <rect x="52" y="172" width="16" height="16" rx="4" fill="#5b6b7c" fill-opacity="0.12"/>
+    <path d="M56 180l4 4 8-9"/>
+    <rect x="84" y="174" width="230" height="12" rx="6"/>
+    <circle cx="344" cy="180" r="7" fill="#cf5348" stroke="#cf5348"/>
+    <rect x="52" y="212" width="16" height="16" rx="4"/>
+    <rect x="84" y="214" width="120" height="12" rx="6"/>
+    <circle cx="344" cy="220" r="7" fill="#2f9e5f" stroke="#2f9e5f"/>
+  </g>
+  <g fill="none" stroke="#5b6b7c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M404 150h48"/>
+    <path d="M440 138l14 12-14 12"/>
+    <path d="M466 108h72l-7 92a10 10 0 0 1-10 9h-38a10 10 0 0 1-10-9z"/>
+    <path d="M458 108h88"/>
+    <path d="M484 124v72M508 124v72"/>
+  </g>
+  <g fill="none" stroke="#2f9e5f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M556 196a34 34 0 1 1 12 26"/>
+    <path d="M556 196l-2 18 18-4"/>
+  </g>
+</svg>
