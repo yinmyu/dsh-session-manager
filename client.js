@@ -151,6 +151,12 @@ window.__ModuleLoader__.load({
         'confirm.purgeBody': '{count} sessions leave the recycle bin for good. This cannot be undone.',
         'confirm.purge': 'Delete permanently',
         'confirm.purgeDescendants': '{entries} of them still have {count} derived sessions',
+        'files.question': 'Also delete the files uploaded or created in this conversation',
+        'files.detail': 'Uploaded attachments: {attachments} ({attachmentExclusive} used only here) · Files it wrote: {paths} ({pathExclusive} written only here)',
+        'files.shared': 'Anything another session still uses is kept. Deletion cannot be undone.',
+        'files.pathsTitle': 'Files that would be deleted:',
+        'files.none': 'This conversation has no files of its own.',
+        'files.removed': 'deleted {count} files',
         'confirm.title': 'Delete permanently',
         'confirm.body': '{count} session logs are removed from disk. This cannot be undone.',
         'confirm.delete': 'Delete permanently',
@@ -315,6 +321,12 @@ window.__ModuleLoader__.load({
         'confirm.purgeBody': '{count} 个会话将从回收站永久移除，无法恢复。',
         'confirm.purge': '彻底删除',
         'confirm.purgeDescendants': '其中 {entries} 项仍有 {count} 个派生会话',
+        'files.question': '同时删除在此对话中上传或创建的文件',
+        'files.detail': '上传的附件 {attachments} 个（其中 {attachmentExclusive} 个仅本对话引用）· 创建的文件 {paths} 个（其中 {pathExclusive} 个仅本对话写过）',
+        'files.shared': '被其他会话共用的文件会保留；删除后不可恢复。',
+        'files.pathsTitle': '将被删除的文件：',
+        'files.none': '这个对话没有自己的文件。',
+        'files.removed': '同时删除 {count} 个文件',
         'confirm.title': '彻底删除',
         'confirm.body': '{count} 个会话的日志会从磁盘移除，无法恢复。',
         'confirm.delete': '彻底删除',
@@ -863,6 +875,10 @@ window.__ModuleLoader__.load({
 .dsh-sm-iconbtn:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-alias-state-business-primary);outline-offset:1px}
 .dsh-sm-iconbtn:disabled{opacity:.4;cursor:default}
 .dsh-sm-note{color:var(--dsw-alias-label-tertiary)}
+.dsh-sm-files{margin:6px 0 4px;display:flex;flex-direction:column;gap:3px}
+.dsh-sm-filecheck{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dsw-alias-label-primary);cursor:pointer}
+.dsh-sm-filecheck input{margin:0;width:13px;height:13px;accent-color:var(--dsw-alias-state-business-primary)}
+.dsh-sm-fileline{font-size:11.5px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
 .dsh-sm-risk{flex:none;display:inline-flex;align-items:center;color:var(--dsw-alias-state-warn-primary);margin-left:2px}
 .dsh-sm-risk[data-tier='high']{color:var(--dsw-alias-state-warn-primary)}
 .dsh-sm-risklines{display:flex;flex-direction:column;gap:2px;margin:2px 0 2px;font-size:12px;line-height:17px}
@@ -1231,6 +1247,10 @@ window.__ModuleLoader__.load({
 
         // Recycle bin (v3): null while the Host predates the op or has not answered.
         const [trash, setTrash] = React.useState(null);
+        // What the selected conversations would take with them, and whether the user said yes.
+        const [fileInfo, setFileInfo] = React.useState(null);
+        const [deleteFiles, setDeleteFiles] = React.useState(false);
+        const fileSeq = React.useRef(0);
         // A restored session is on disk again, but the client session store only learns about
         // sessions from its own list/event feed, so its row can lag. These entries keep the panel
         // truthful in the meantime and disappear as soon as the store catches up.
@@ -1290,6 +1310,44 @@ window.__ModuleLoader__.load({
             });
           } catch (error) {
             if (seq === trashSeq.current) setTrash(null);
+          }
+        };
+
+        /**
+         * Ask the Host what the current selection owns exclusively. Read-only, and the answer is
+         * what the confirm sheet shows before the user decides about their files.
+         */
+        const loadFileInfo = async (ids) => {
+          const seq = fileSeq.current + 1;
+          fileSeq.current = seq;
+          if (!Array.isArray(ids) || ids.length === 0) {
+            setFileInfo(null);
+            return;
+          }
+          try {
+            const response = await postOp({ op: 'session-files', sessionIds: ids });
+            const payload = response.payload;
+            if (seq !== fileSeq.current) return;
+            if (response.ok !== true || payload === null || payload.ok !== true || payload.totals === null || typeof payload.totals !== 'object') {
+              setFileInfo(null);
+              return;
+            }
+            const totals = payload.totals;
+            const samples = [];
+            for (const item of Object.values(payload.items ?? {})) {
+              for (const path of Array.isArray(item?.workspaceFiles?.sample) ? item.workspaceFiles.sample : []) {
+                if (samples.indexOf(path) < 0) samples.push(String(path));
+              }
+            }
+            setFileInfo({
+              attachments: measurement(totals.attachments) ?? 0,
+              attachmentExclusive: measurement(totals.attachmentsExclusive) ?? 0,
+              paths: measurement(totals.paths) ?? 0,
+              pathExclusive: measurement(totals.pathsExclusive) ?? 0,
+              samples: samples.slice(0, 20),
+            });
+          } catch (error) {
+            if (seq === fileSeq.current) setFileInfo(null);
           }
         };
 
@@ -1660,7 +1718,7 @@ window.__ModuleLoader__.load({
           setStatus({ tone: 'idle', key: 'status.deleting', params: { done: 0, total: targets.length } });
           try {
             if (typeof actions.remove !== 'function') throw new Error(t('error.noService'));
-            const result = await actions.remove(targets.map((row) => row.id), archivedSet);
+            const result = await actions.remove(targets.map((row) => row.id), archivedSet, { deleteFiles });
             const deleted = Array.isArray(result.deleted) ? result.deleted : [];
             const failed = Array.isArray(result.failed) ? result.failed : [];
             // `not-found` is not a failure the user must act on: the log is
@@ -1686,6 +1744,10 @@ window.__ModuleLoader__.load({
             const freed = measurement(result.freedBytes);
             const freedText = formatBytes(freed, t);
             const goneSuffix = gone.length > 0 ? t('status.gone', { count: gone.length }) : '';
+            const removedFiles = result.filesRemoved === null || result.filesRemoved === undefined
+              ? 0
+              : (result.filesRemoved.attachments ?? 0) + (result.filesRemoved.workspace ?? 0);
+            const filesSuffix = removedFiles > 0 ? t('files.removed', { count: removedFiles }) : '';
             const reported = typeof result.auditLog === 'string' && result.auditLog !== '' ? result.auditLog : null;
             if (reported !== null) setAuditPath(reported);
             const auditTarget = reported !== null ? reported : auditPath;
@@ -1696,8 +1758,8 @@ window.__ModuleLoader__.load({
               const purgeHint = t('gc.audit', { path: auditTarget });
               const undoIds = trashed.slice();
               setStatus(movedText === null
-                ? { tone: 'ok', key: 'status.trashedNoSize', params: { count: trashed.length }, suffix: goneSuffix, hint: auditTarget !== null ? purgeHint : '', undoIds }
-                : { tone: 'ok', key: 'status.trashed', params: { count: trashed.length, size: movedText }, suffix: goneSuffix, hint: auditTarget !== null ? purgeHint : '', undoIds });
+                ? { tone: 'ok', key: 'status.trashedNoSize', params: { count: trashed.length }, suffix: [goneSuffix, filesSuffix].filter(Boolean).join(' · '), hint: auditTarget !== null ? purgeHint : '', undoIds }
+                : { tone: 'ok', key: 'status.trashed', params: { count: trashed.length, size: movedText }, suffix: [goneSuffix, filesSuffix].filter(Boolean).join(' · '), hint: auditTarget !== null ? purgeHint : '', undoIds });
               void loadTrash();
             } else if (hard.length === 0) {
               if (deleted.length === 0) {
@@ -2209,6 +2271,36 @@ window.__ModuleLoader__.load({
               return { entries, count };
             })()
             : null;
+          const filesNode = (() => {
+            if (purging === true || fileInfo === null) return null;
+            const deletable = fileInfo.attachmentExclusive > 0 || fileInfo.pathExclusive > 0;
+            if (deletable !== true) {
+              return h('div', { className: 'dsh-sm-fileline' }, t('files.none'));
+            }
+            return h('div', { className: 'dsh-sm-files' },
+              h('label', { className: 'dsh-sm-filecheck' },
+                h('input', {
+                  type: 'checkbox',
+                  checked: deleteFiles === true,
+                  disabled: busy,
+                  onChange: (event) => setDeleteFiles(event.target.checked === true),
+                }),
+                h('span', null, t('files.question')),
+              ),
+              h('div', {
+                className: 'dsh-sm-fileline',
+                title: fileInfo.samples.length === 0
+                  ? undefined
+                  : `${t('files.pathsTitle')} ${fileInfo.samples.join('  ·  ')}`,
+              }, t('files.detail', {
+                attachments: String(fileInfo.attachments),
+                attachmentExclusive: String(fileInfo.attachmentExclusive),
+                paths: String(fileInfo.paths),
+                pathExclusive: String(fileInfo.pathExclusive),
+              })),
+              h('div', { className: 'dsh-sm-fileline' }, t('files.shared')),
+            );
+          })();
           const riskLines = riskMap === null && purging !== true
             ? null
             : h('div', { className: 'dsh-sm-risklines' },
@@ -2238,6 +2330,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'dsh-sm-confirmtext' },
               h('div', { className: 'dsh-sm-confirmtitle' }, confirmTitle),
               h('div', null, confirmBody),
+              filesNode,
               riskLines,
               selectedSizeText === null ? null : h('div', { className: 'dsh-sm-confirmsub' }, selectionLabel),
             ),
@@ -2338,7 +2431,11 @@ window.__ModuleLoader__.load({
               'data-variant': 'dangerText',
               ref: deleteRef,
               disabled: busy,
-              onClick: () => setConfirming(true),
+              onClick: () => {
+                setDeleteFiles(false);
+                setConfirming(true);
+                void loadFileInfo(selectedRows.map((row) => row.id));
+              },
             }, t('action.delete')),
             h('button', {
               type: 'button',
@@ -2528,14 +2625,14 @@ window.__ModuleLoader__.load({
          * others, and an archive failure is not fatal because the Host's delete
          * result is authoritative.
          */
-        const remove = async (sessionIds, archivedSet) => {
+        const remove = async (sessionIds, archivedSet, options = {}) => {
           const archived = archivedSet instanceof Set ? archivedSet : new Set();
           const ids = Array.isArray(sessionIds) ? sessionIds.slice() : [];
           const pending = ids.filter((sessionId) => archived.has(sessionId) !== true);
           await mapPool(pending, MAX_PARALLEL, async (sessionId) => {
             await archive(sessionId);
           });
-          const response = await postOp({ op: 'delete', sessionIds: ids });
+          const response = await postOp({ op: 'delete', sessionIds: ids, deleteFiles: options.deleteFiles === true });
           if (response.payload === null) throw new Error(notice(t, 'error.http', { status: response.status }));
           if (response.payload.ok !== true) {
             const reason = typeof response.payload.reason === 'string' && response.payload.reason !== ''
@@ -2551,10 +2648,18 @@ window.__ModuleLoader__.load({
           for (const sessionId of deleted) hiddenIds.add(sessionId);
           const freedBytes = measurement(response.payload.freedBytes);
           const trashedBytes = measurement(response.payload.trashedBytes);
+          const filesRemoved = response.payload.filesRemoved !== null && typeof response.payload.filesRemoved === 'object'
+            ? {
+              attachments: measurement(response.payload.filesRemoved.attachments) ?? 0,
+              workspace: measurement(response.payload.filesRemoved.workspace) ?? 0,
+              bytes: measurement(response.payload.filesRemoved.bytes) ?? 0,
+              failed: Array.isArray(response.payload.filesRemoved.failed) ? response.payload.filesRemoved.failed.length : 0,
+            }
+            : null;
           const auditLog = typeof response.payload.auditLog === 'string' && response.payload.auditLog !== ''
             ? response.payload.auditLog
             : null;
-          return { deleted, trashed, failed, freedBytes, trashedBytes, auditLog };
+          return { deleted, trashed, failed, freedBytes, trashedBytes, filesRemoved, auditLog };
         };
 
         /** Bring recycle-bin entries back; the Host reports per-entry failures by code. */

@@ -1461,6 +1461,61 @@ await checkAsync('v8: the new safety failures are localized, not shown as raw te
   responder = () => undefined;
 });
 
+await checkAsync('v9 files: the confirm sheet asks before taking a conversation\'s files', async () => {
+  responder = v3Responder({
+    'session-files': () => ({ payload: { ok: true, items: { a: { workspaceFiles: { sample: ['/work/out.md'] } } }, totals: { attachments: 3, attachmentsExclusive: 2, paths: 1, pathsExclusive: 1, bytes: 2048 } } }),
+    delete: (body) => ({ payload: { ok: true, trashed: body.sessionIds, deleted: [], trashedBytes: 1024, freedBytes: 0, failed: [], auditLog: '/tmp/audit.jsonl', filesRemoved: { attachments: 2, workspace: 1, bytes: 2048, failed: [] } } }),
+  });
+  await usePlainNames();
+  await mountPanel(riskPanel());
+  for (const title of ['空白草稿', '子代理产物']) {
+    const row = rowsOf(renderPanel(riskPanel())).find((node) => squash(node).includes(title));
+    assert(row !== undefined, `row not found: ${title}`);
+    row.props.onClick();
+  }
+  buttons(renderPanel(riskPanel()), 'dangerText').find((node) => squash(node) === dictionaries[LOCALE]['action.delete']).props.onClick();
+  await settle();
+  const sheet = renderPanel(riskPanel());
+  const asked = squash(sheet);
+  assert(asked.includes(dictionaries[LOCALE]['files.question']), `the question is missing: ${asked}`);
+  assert(asked.includes(interpolate(dictionaries[LOCALE]['files.detail'], {
+    attachments: '3', attachmentExclusive: '2', paths: '1', pathExclusive: '1',
+  })), `the counts are missing: ${asked}`);
+  assert(asked.includes(dictionaries[LOCALE]['files.shared']), 'the sheet must say that shared files survive');
+  const box = collect(sheet, (node) => node.tag === 'input' && node.props.type === 'checkbox')[0];
+  assert(box !== undefined && box.props.checked === false, 'the question must default to "no"');
+  box.props.onChange({ target: { checked: true } });
+  httpCalls.length = 0;
+  buttons(confirmBlock(renderPanel(riskPanel())), 'dangerSolid')[0].props.onClick();
+  await settle();
+  const call = httpCalls.filter((entry) => entry.op === 'delete')[0];
+  assert(call !== undefined, 'no delete request');
+  assertEqual(call.deleteFiles, true, 'the answer must reach the Host');
+  const status = statusText(renderPanel(riskPanel()));
+  assert(status.includes(interpolate(dictionaries[LOCALE]['files.removed'], { count: 3 })), `the status must report the removed files, got: ${status}`);
+  responder = () => undefined;
+});
+
+await checkAsync('v9 files: without files of its own the sheet says so and asks nothing', async () => {
+  responder = v3Responder({
+    'session-files': () => ({ payload: { ok: true, items: {}, totals: { attachments: 0, attachmentsExclusive: 0, paths: 0, pathsExclusive: 0, bytes: 0 } } }),
+  });
+  await usePlainNames();
+  await mountPanel(riskPanel());
+  selectRow(renderPanel(riskPanel()), '空白草稿');
+  buttons(renderPanel(riskPanel()), 'dangerText').find((node) => squash(node) === dictionaries[LOCALE]['action.delete']).props.onClick();
+  await settle();
+  const sheet = renderPanel(riskPanel());
+  assert(squash(sheet).includes(dictionaries[LOCALE]['files.none']), 'a conversation with no files must say so');
+  assert(collect(sheet, (node) => node.tag === 'input' && node.props.type === 'checkbox').length === 0, 'and must not ask a question with no options');
+  httpCalls.length = 0;
+  buttons(confirmBlock(sheet), 'dangerSolid')[0].props.onClick();
+  await settle();
+  const call = httpCalls.filter((entry) => entry.op === 'delete')[0];
+  assertEqual(call.deleteFiles, false, 'an unanswered question means no files');
+  responder = () => undefined;
+});
+
 /* ------------------------------------------------------------------ */
 /* Report                                                              */
 /* ------------------------------------------------------------------ */

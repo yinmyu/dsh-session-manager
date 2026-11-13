@@ -1,6 +1,6 @@
 {
   "name": "@yinmyu/dsh-session-manager",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "Batch-manage DeepSeek Harness sessions from a left-sidebar panel: multi-select, archive, a 30-day recycle bin with undo, tiered deletion risk, and a self-verifying cleanup for unused attachments.",
   "type": "module",
   "license": "MIT",

@@ -465,6 +465,280 @@ async function riskStats(ctx, candidate, signal) {
 }
 
 /* ------------------------------------------------------------------------------------------------
+ * Per-session files: what a conversation uploaded, and what it wrote
+ *
+ * A session owns two kinds of artefacts. Uploaded attachments are content-addressed objects in the
+ * shared attachment store; files it wrote are ordinary files on disk. Both can be shared with other
+ * sessions, and deleting a shared object would break someone else. So "delete the files of this
+ * conversation" is answered with a *proof*: which ids/paths this session produced that no OTHER
+ * surviving session also names. The panel shows those counts before the user decides.
+ * ---------------------------------------------------------------------------------------------- */
+
+/** Tool calls whose arguments name the file they wrote. */
+const WRITE_TOOLS = new Set(['write', 'edit', 'apply_patch'])
+const WRITE_PATH_KEYS = ['file_path', 'filePath', 'path']
+
+/** Paths outside the harness home that a session wrote, plus the attachments it referenced. */
+function collectSessionFiles(events, into) {
+	for (const event of events) {
+		if (event === null || typeof event !== 'object') continue
+		if (event.type === 'tool/call') {
+			const name = event.data?.name
+			if (WRITE_TOOLS.has(name) !== true) continue
+			let args
+			try {
+				args = typeof event.data.arguments === 'string' ? JSON.parse(event.data.arguments) : event.data.arguments
+			} catch {
+				continue
+			}
+			if (args === null || typeof args !== 'object') continue
+			for (const key of WRITE_PATH_KEYS) {
+				const value = args[key]
+				if (typeof value === 'string' && value !== '') {
+					into.paths.add(value)
+					break
+				}
+			}
+			continue
+		}
+		if (event.type === 'deliverables/presented') {
+			for (const file of Array.isArray(event.data?.files) ? event.data.files : []) {
+				const path = file?.path
+				if (typeof path === 'string' && path !== '') into.paths.add(path)
+			}
+		}
+	}
+}
+
+/** Read one session directory's logs and accumulate its artefacts. */
+async function collectSessionArtefacts(dir, into) {
+	let files = []
+	try {
+		files = await readdir(dir, { withFileTypes: true })
+	} catch {
+		return
+	}
+	for (const file of files) {
+		if (file.isFile() !== true || SESSION_LOG_NAME.test(file.name) !== true) continue
+		let events
+		try {
+			const raw = await readFile(join(dir, file.name))
+			const text = file.name.endsWith('.zstd') ? decodeZstdDocument(raw) : file.name.endsWith('.gz') ? (await import('node:zlib')).gunzipSync(raw).toString('utf8') : raw.toString('utf8')
+			events = []
+			for (const line of text.split('\n')) {
+				if (line.startsWith('{') !== true) continue
+				try {
+					events.push(JSON.parse(line))
+				} catch {
+					/* a torn line is not a reason to lose the rest */
+				}
+			}
+		} catch {
+			continue
+		}
+		for (const event of events) {
+			if (event.type === 'user/message' || event.type === 'tool/result') {
+				collectAttachmentIds(JSON.stringify(event.data ?? ''), into.attachments)
+			}
+		}
+		collectSessionFiles(events, into)
+	}
+}
+
+/**
+ * Inventory of every session's artefacts, live and trashed.
+ * @returns `Map<sessionId, {attachments: Set<string>, paths: Set<string>}>`.
+ */
+async function sessionArtefactIndex(home, signal) {
+	const index = new Map()
+	const entryFor = (id) => {
+		const existing = index.get(id)
+		if (existing !== undefined) return existing
+		const created = { attachments: new Set(), paths: new Set() }
+		index.set(id, created)
+		return created
+	}
+	const sessionsRoot = join(home, 'sessions')
+	let projects = []
+	try {
+		projects = await readdir(sessionsRoot, { withFileTypes: true })
+	} catch {
+		projects = []
+	}
+	for (const project of projects) {
+		if (project.isDirectory() !== true) continue
+		const projectPath = join(sessionsRoot, project.name)
+		let sessionDirs = []
+		try {
+			sessionDirs = await readdir(projectPath, { withFileTypes: true })
+		} catch {
+			continue
+		}
+		for (const sessionDir of sessionDirs) {
+			if (sessionDir.isDirectory() !== true) continue
+			signal?.throwIfAborted()
+			await collectSessionArtefacts(join(projectPath, sessionDir.name), entryFor(sessionDir.name))
+		}
+	}
+	const trash = trashRoot(home)
+	let trashEntries = []
+	try {
+		trashEntries = await readdir(trash, { withFileTypes: true })
+	} catch {
+		trashEntries = []
+	}
+	for (const entry of trashEntries) {
+		if (entry.isDirectory() !== true) continue
+		signal?.throwIfAborted()
+		await collectSessionArtefacts(join(trash, entry.name), entryFor(entry.name))
+	}
+	return index
+}
+
+/** Which attachments / paths survive the removal of `targets` — i.e. are still owned elsewhere. */
+function sharedArtefacts(index, targets) {
+	const sharedAttachments = new Set()
+	const sharedPaths = new Set()
+	for (const [id, entry] of index) {
+		if (targets.has(id) === true) continue
+		for (const digest of entry.attachments) sharedAttachments.add(digest)
+		for (const path of entry.paths) sharedPaths.add(path)
+	}
+	return { sharedAttachments, sharedPaths }
+}
+
+/** Present the attachment digest's store paths (an object, a file object, named aliases). */
+async function attachmentPathsFor(home, digest) {
+	const store = join(home, 'attachments', ATTACHMENT_STORE)
+	const paths = []
+	const shard = join(store, 'objects', digest.slice(0, 2))
+	const object = join(shard, digest)
+	if (await pathExists(object)) paths.push(object)
+	const fileShard = join(store, 'file-objects', digest.slice(0, 2))
+	const fileObject = join(fileShard, digest)
+	if (await pathExists(fileObject)) paths.push(fileObject)
+	const namedRoot = join(store, 'files', digest.slice(0, 2), digest)
+	let named = []
+	try {
+		named = await readdir(namedRoot, { withFileTypes: true })
+	} catch {
+		named = []
+	}
+	for (const entry of named) {
+		if (entry.isFile() === true) paths.push(join(namedRoot, entry.name))
+	}
+	return paths
+}
+
+async function pathExists(path) {
+	try {
+		const info = await lstat(path)
+		return info.isFile() === true
+	} catch {
+		return false
+	}
+}
+
+/**
+ * Answer "what would deleting these sessions take with them?".
+ * @returns `{items, totals}` with per-session counts and a bounded sample of file paths.
+ */
+async function sessionFilesReport(home, ids, signal) {
+	const index = await sessionArtefactIndex(home, signal)
+	const targets = new Set(ids)
+	const { sharedAttachments, sharedPaths } = sharedArtefacts(index, targets)
+	const items = {}
+	const totals = { attachments: 0, attachmentsExclusive: 0, paths: 0, pathsExclusive: 0, bytes: 0 }
+	for (const id of ids) {
+		const own = index.get(id) ?? { attachments: new Set(), paths: new Set() }
+		const attachments = [...own.attachments]
+		const exclusive = attachments.filter((digest) => sharedAttachments.has(digest) !== true)
+		let bytes = 0
+		for (const digest of exclusive) {
+			for (const path of await attachmentPathsFor(home, digest)) {
+				try {
+					bytes += Number((await lstat(path)).size) || 0
+				} catch {
+					/* a size we cannot read is not a failure */
+				}
+			}
+		}
+		const paths = [...own.paths]
+		const exclusivePaths = []
+		for (const path of paths) {
+			if (sharedPaths.has(path) === true) continue
+			if (isAbsolute(path) !== true) continue
+			if ((await pathExists(path)) !== true) continue
+			exclusivePaths.push(path)
+		}
+		items[id] = {
+			attachments: { total: attachments.length, exclusive: exclusive.length, exclusiveBytes: bytes },
+			workspaceFiles: { total: paths.length, exclusive: exclusivePaths.length, sample: exclusivePaths.slice(0, 20) },
+		}
+		totals.attachments += attachments.length
+		totals.attachmentsExclusive += exclusive.length
+		totals.paths += paths.length
+		totals.pathsExclusive += exclusivePaths.length
+		totals.bytes += bytes
+	}
+	return { items, totals }
+}
+
+/**
+ * Remove the artefacts a deleted conversation owns exclusively. Runs after the sessions left their
+ * live directories, and never touches an object or path another surviving session names.
+ * @returns `{attachments, workspace, bytes, failed}`.
+ */
+async function removeSessionFiles(home, ids, signal) {
+	const index = await sessionArtefactIndex(home, signal)
+	const targets = new Set(ids)
+	const { sharedAttachments, sharedPaths } = sharedArtefacts(index, targets)
+	const failed = []
+	let attachments = 0
+	let workspace = 0
+	let bytes = 0
+	for (const id of ids) {
+		const own = index.get(id) ?? { attachments: new Set(), paths: new Set() }
+		for (const digest of own.attachments) {
+			if (sharedAttachments.has(digest) === true) continue
+			for (const path of await attachmentPathsFor(home, digest)) {
+				signal?.throwIfAborted()
+				try {
+					const info = await lstat(path)
+					bytes += Number(info.size) || 0
+					await unlink(path)
+					attachments += 1
+				} catch (error) {
+					if (error?.code === 'ENOENT') continue
+					failed.push({ path, reason: messageOf(error) })
+				}
+			}
+		}
+		for (const path of own.paths) {
+			if (sharedPaths.has(path) === true) continue
+			if (isAbsolute(path) !== true) continue
+			let info
+			try {
+				info = await lstat(path)
+			} catch {
+				continue
+			}
+			if (info.isFile() !== true || info.isSymbolicLink() === true) continue
+			signal?.throwIfAborted()
+			try {
+				const size = Number(info.size) || 0
+				await unlink(path)
+				workspace += 1
+				bytes += size
+			} catch (error) {
+				failed.push({ path, reason: messageOf(error) })
+			}
+		}
+	}
+	return { attachments, workspace, bytes, failed }
+}
+
+/* ------------------------------------------------------------------------------------------------
  * Wire helpers
  * ---------------------------------------------------------------------------------------------- */
 
@@ -2333,6 +2607,13 @@ async function handleRequest(ctx, req, res, config) {
 		const overview = await riskOverview(ctx, requestSignal(req, res))
 		return sendJson(res, 200, { ok: true, ...overview })
 	}
+	if (op === 'session-files') {
+		if (Array.isArray(body.sessionIds) !== true) return sendFailure(res, 400, 'sessionIds must be an array')
+		const { ids, invalid } = normalizeIds(body.sessionIds)
+		if (ids.length === 0 && invalid.length === 0) return sendFailure(res, 400, 'sessionIds is empty')
+		const report = await sessionFilesReport(dshHome(), ids, requestSignal(req, res))
+		return sendJson(res, 200, { ok: true, items: report.items, totals: report.totals, failed: invalid })
+	}
 	if (op === 'risk-stats') {
 		let stats
 		try {
@@ -2433,7 +2714,22 @@ async function handleRequest(ctx, req, res, config) {
 	const { ids, invalid } = normalizeIds(body.sessionIds)
 	if (ids.length === 0 && invalid.length === 0) return sendFailure(res, 400, 'sessionIds is empty')
 
-	const outcome = await withDestructiveLock(() => deleteSessions(ctx, options, ids, requestSignal(req, res), body.permanent === true, body.force === true))
+	const outcome = await withDestructiveLock(async () => {
+		const signal = requestSignal(req, res)
+		const result = await deleteSessions(ctx, options, ids, signal, body.permanent === true, body.force === true)
+		// Files leave only after the sessions did, and only the ones no other session names.
+		if (body.deleteFiles === true) {
+			const went = [...result.trashed, ...result.deleted]
+			if (went.length > 0) {
+				result.filesRemoved = await removeSessionFiles(dshHome(), went, signal)
+				if (went.length > 0 && (result.trashed.length > 0) === false) {
+					// permanent removals also free the attachments their logs used to protect
+					result.filesVerified = await verifyAfterGc(dshHome(), signal)
+				}
+			}
+		}
+		return result
+	})
 	return sendJson(res, 200, {
 		ok: true,
 		trashed: outcome.trashed,
@@ -2441,6 +2737,8 @@ async function handleRequest(ctx, req, res, config) {
 		failed: [...invalid, ...outcome.failed],
 		trashedBytes: outcome.trashedBytes,
 		freedBytes: outcome.freedBytes,
+		filesRemoved: outcome.filesRemoved ?? null,
+		filesVerified: outcome.filesVerified ?? null,
 		auditLog: outcome.auditLog ?? null,
 	})
 }

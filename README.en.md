@@ -70,6 +70,7 @@ The distinction matters: **offboarding is reversible, terminating is not.** Usin
 | Bulk selection | Search by title, folder or id; filter by archive state and workspace; act on many rows at once |
 | Deletion risk | Three tiers (keep an eye on / check first / safe to remove) with the reasons that fired; only warnings mark a row, and the confirm sheet names the sessions to look at |
 | Archive | Batch archive / unarchive through the host's own workspace controller |
+| Conversation files | Before removing, the panel asks “also delete the files uploaded or created in this conversation”, splits uploaded attachments from files the session wrote, and removes only what no other session references or wrote — shared files survive |
 | Recycle bin | The session directory moves to `<DSH_HOME>/trash/sessions/<id>/` with a sidecar recording origin, expiry, title and size; restore, permanent delete and "remove expired" live there |
 | Undo | After a move, the status line offers one-click undo for that batch |
 | Attachment cleanup | Removes only objects no surviving session (including trashed ones) references, then verifies itself and reports `verify.ok` |

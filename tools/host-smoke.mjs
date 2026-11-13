@@ -939,6 +939,90 @@ section('v2 sizes: per-session durable bytes and list bytes')
 		process.env.DSH_HOME = previousHome
 	}
 
+	section('v9 files: a conversation can take only what nobody else uses')
+	{
+		const home = join(fixtureRoot, 'files-home')
+		process.env.DSH_HOME = home
+		const sessionsRoot = join(home, 'sessions')
+		const work = join(home, 'work')
+		await mkdir(work, { recursive: true })
+		const sharedAttachment = 'e'.repeat(64)
+		const soloAttachment = 'f'.repeat(64)
+		const fileShared = join(work, 'shared.md')
+		const fileSolo = join(work, 'only-a.md')
+		await writeFile(fileShared, '# shared\n')
+		await writeFile(fileSolo, '# only a\n')
+
+		const madeA = await makeSessionDir(sessionsRoot, '--f--', 'conv-a')
+		const madeB = await makeSessionDir(sessionsRoot, '--f--', 'conv-b')
+		const line = (type, data) => JSON.stringify({ type, time: Date.now(), data })
+		const imageLine = (digest) => line('user/message', { message: { role: 'user', content: [
+			{ type: 'image', attachment: { attachmentId: `sha256:${digest}`, mediaType: 'image/png', bytes: 2, width: 1, height: 1 } },
+		] } })
+		const writeLine = (path) => line('tool/call', { turn: 1, step: 1, callId: 'c1', name: 'write', arguments: JSON.stringify({ file_path: path, content: 'x' }) })
+		const presentedLine = (path) => line('deliverables/presented', { turn: 1, callId: 'c2', files: [{ path, description: 'report' }] })
+		await writeFile(join(madeA.dir, 'session.v4.jsonl'), [imageLine(sharedAttachment), imageLine(soloAttachment), writeLine(fileShared), writeLine(fileSolo), presentedLine(fileSolo)].join('\n') + '\n')
+		await rm(join(madeA.dir, 'session.v4.jsonl.zstd'), { force: true })
+		await writeFile(join(madeB.dir, 'session.v4.jsonl'), [imageLine(sharedAttachment), writeLine(fileShared)].join('\n') + '\n')
+		await rm(join(madeB.dir, 'session.v4.jsonl.zstd'), { force: true })
+
+		const store = join(home, 'attachments', 'v1')
+		for (const digest of [sharedAttachment, soloAttachment]) {
+			await mkdir(join(store, 'objects', digest.slice(0, 2)), { recursive: true })
+			await writeFile(join(store, 'objects', digest.slice(0, 2), digest), 'img')
+		}
+		const locations = {
+			'conv-a': join(madeA.dir, 'session.v4.jsonl'),
+			'conv-b': join(madeB.dir, 'session.v4.jsonl'),
+		}
+		const m = makeContext({ sessionPersistence: fakePersistence(locations) })
+		apply(m.ctx, {})
+		const r = m.routes[0]
+
+		const inventory = await call(r, { body: JSON.stringify({ op: 'session-files', sessionIds: ['conv-a'] }) })
+		const item = inventory.json?.items?.['conv-a']
+		check('the inventory counts both kinds of artefact', item?.attachments?.total === 2 && item?.workspaceFiles?.total === 2, JSON.stringify(item))
+		check('an attachment another session shares is not exclusive', item?.attachments?.exclusive === 1, JSON.stringify(item?.attachments))
+		check('a file another session also wrote is not exclusive', item?.workspaceFiles?.exclusive === 1, JSON.stringify(item?.workspaceFiles))
+		check('the exclusive file is the one only this session wrote', JSON.stringify(item?.workspaceFiles?.sample) === JSON.stringify([fileSolo]), JSON.stringify(item?.workspaceFiles?.sample))
+		check('the totals are reported for the panel', inventory.json?.totals?.attachments === 2 && inventory.json?.totals?.attachmentsExclusive === 1, JSON.stringify(inventory.json?.totals))
+
+		// Without the flag nothing but the session directory moves.
+		await call(r, { body: JSON.stringify({ op: 'delete', sessionIds: ['conv-a'] }) })
+		check('moving without the flag keeps every file', (await exists(fileSolo)) === true && (await exists(join(store, 'objects', soloAttachment.slice(0, 2), soloAttachment))) === true)
+		await call(r, { body: JSON.stringify({ op: 'trash-restore', sessionIds: ['conv-a'] }) })
+
+		const withFiles = await call(r, { body: JSON.stringify({ op: 'delete', sessionIds: ['conv-a'], deleteFiles: true }) })
+		check('the exclusive attachment is removed with the conversation', (await exists(join(store, 'objects', soloAttachment.slice(0, 2), soloAttachment))) === false, JSON.stringify(withFiles.json?.filesRemoved))
+		check('the shared attachment survives', (await exists(join(store, 'objects', sharedAttachment.slice(0, 2), sharedAttachment))) === true)
+		check('the exclusive workspace file is removed', (await exists(fileSolo)) === false)
+		check('the shared workspace file survives', (await exists(fileShared)) === true)
+		check('the removal is reported', withFiles.json?.filesRemoved?.attachments === 1 && withFiles.json?.filesRemoved?.workspace === 1, JSON.stringify(withFiles.json?.filesRemoved))
+
+		const other = await call(r, { body: JSON.stringify({ op: 'session-files', sessionIds: ['conv-b'] }) })
+		check('the other conversation keeps its shared artefacts intact', other.json?.items?.['conv-b']?.attachments?.total === 1 && other.json?.items?.['conv-b']?.workspaceFiles?.total === 1, JSON.stringify(other.json?.items?.['conv-b']))
+	}
+
+	section('v9 files: a directory is never deleted as a file')
+	{
+		const home = join(fixtureRoot, 'files-dir')
+		process.env.DSH_HOME = home
+		const sessionsRoot = join(home, 'sessions')
+		const made = await makeSessionDir(sessionsRoot, '--f--', 'conv-dir')
+		const folder = join(home, 'work', 'a-folder')
+		await mkdir(folder, { recursive: true })
+		await writeFile(join(folder, 'inside.txt'), 'x')
+		const line = (type, data) => JSON.stringify({ type, time: Date.now(), data })
+		await writeFile(join(made.dir, 'session.v4.jsonl'), line('tool/call', { turn: 1, step: 1, callId: 'c1', name: 'write', arguments: JSON.stringify({ file_path: folder }) }) + '\n')
+		await rm(join(made.dir, 'session.v4.jsonl.zstd'), { force: true })
+		const m = makeContext({ sessionPersistence: fakePersistence({ 'conv-dir': join(made.dir, 'session.v4.jsonl') }) })
+		apply(m.ctx, {})
+		const inventory = await call(m.routes[0], { body: JSON.stringify({ op: 'session-files', sessionIds: ['conv-dir'] }) })
+		check('a path that is not a regular file is not offered', inventory.json?.items?.['conv-dir']?.workspaceFiles?.exclusive === 0, JSON.stringify(inventory.json?.items?.['conv-dir']))
+		await call(m.routes[0], { body: JSON.stringify({ op: 'delete', sessionIds: ['conv-dir'], deleteFiles: true }) })
+		check('the directory is still there after the cleanup', (await exists(folder)) === true)
+	}
+
 	section('v8 safety: a move that cannot be restored is rolled back, never left in the bin')
 	{
 		const home = join(fixtureRoot, 'safety-move')
